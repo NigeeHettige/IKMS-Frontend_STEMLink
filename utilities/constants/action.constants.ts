@@ -1,0 +1,15 @@
+export const COMMON_ACTION_TYPES = {
+  REQUEST: "_REQUEST",
+  SUCCESS: "_SUCCESS",
+  ERROR: "_ERROR",
+};
+
+export const FILE_ACTION_TYPES = {
+  POST_FILE: "POST_FILE",
+
+};
+
+export const ANSWERING_ACTION_TYPES = {
+  POST_ANSWER: "POST_ANSWER",
+
+};
