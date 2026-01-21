@@ -1,9 +1,9 @@
 
-import { axiosPublicInstance} from '.'
+import { axiosFileUploadInstance} from '.'
 
 
 const uploadfile = (payload: FormData) => {
-  return axiosPublicInstance.post('/index-pdf', payload)
+  return axiosFileUploadInstance.post('/index-pdf', payload)
 }
 
 

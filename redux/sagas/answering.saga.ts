@@ -18,7 +18,7 @@ function* postAnswer(action: { type: string; payload: AnsweringRequestDto }) {
       data: answer.data,
     });
   } catch (error) {
-    put({
+    yield put({
       type: ANSWERING_ACTION_TYPES.POST_ANSWER  + COMMON_ACTION_TYPES.ERROR,
       error: error as string,
     });

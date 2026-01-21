@@ -3,243 +3,263 @@
 import React from "react";
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Settings, RotateCcw, Zap ,Paperclip } from "lucide-react";
-import UploadDocument from "./upload-document/upload-document";
+import { Send, RotateCcw, Zap, Paperclip } from "lucide-react";
+
 import {
   Document,
-  QueryPlan,
-  Source,
   Message,
+  UploadResponse,
+  QAPayloadDTO,
 } from "@/utilities/models/chat.model";
-import LoadedDocument from "./loaded-document/loaded-document";
 import QueryPlaning from "./query-plan/query-plan";
 import SourceContent from "./source-content/source-content";
-import PipelineStatus from "./pipeline-status/pipeline-status";
 import { useDispatch, useSelector } from "react-redux";
-import { fileActions } from "@/redux/actions";
-import { FileDto } from "@/utilities/models/file.model";
+import { answeringActions } from "@/redux/actions";
 import { fileService } from "@/service";
 import {
   COMMON_ACTION_TYPES,
   FILE_ACTION_TYPES,
 } from "@/utilities/constants/action.constants";
 
-const MOCK_AI_RESPONSES: Record<string, string> = {
-  default:
-    "Based on the uploaded documents, I can provide you with comprehensive insights. The analysis shows multiple key points across the indexed materials, with strong confidence in the retrieved information.",
-  vector:
-    "Vector databases are specialized data storage systems designed to efficiently store and retrieve vector embeddings. They are fundamental to modern AI applications, enabling semantic search and similarity matching.",
-  analysis:
-    "The document analysis reveals several important patterns and findings. The data suggests clear correlations between key metrics, with supporting evidence found across multiple sections.",
-  benefits:
-    "The primary benefits include improved efficiency, enhanced accuracy, and scalability. These advantages are particularly evident in large-scale applications where traditional methods might fall short.",
-};
+import { parseContextToSources } from "@/utilities/helper/context";
+import UploadModal from "./upload-document/upload-document";
+import ConfirmModal from "./confirmation-modal/confirmation-modal";
+import DocumentsModal from "./loaded-document/loaded-document";
+import DocumentBadge from "./document-badge/document-badge";
+
+// Loading dots component
+const LoadingDots = () => (
+  <div className="flex items-center gap-1">
+    <span className="animate-bounce animation-delay-0">●</span>
+    <span className="animate-bounce animation-delay-200">●</span>
+    <span className="animate-bounce animation-delay-400">●</span>
+  </div>
+);
 
 export default function RAGTerminal() {
+  const [sessionId, setSessionId] = useState<string>("");
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+  const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [showAllDocs, setShowAllDocs] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
   const [expandedSources, setExpandedSources] = useState<string | null>(null);
   const [showQueryPlanning, setShowQueryPlanning] = useState(true);
-  const [dragActive, setDragActive] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const documentsRef = useRef<HTMLDivElement>(null);
+  const [lastProcessedResponseId, setLastProcessedResponseId] = useState<
+    string | null
+  >(null);
+
   const dispatch = useDispatch();
+  const answer_response = useSelector((state: any) => state.answer.postAnswer);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
-  };
+  useEffect(() => {
+    if (answer_response?.data && answer_response.data.answer) {
+      // Create unique ID for this response to prevent duplicates
+      const responseId = `${answer_response.data.session_id}_${answer_response.data.answer}_${answer_response.data.plan}`;
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
+      // Only process if this is a new response
+      if (responseId !== lastProcessedResponseId) {
+        setLastProcessedResponseId(responseId);
 
-    const files = e.dataTransfer.files;
-    for (let i = 0; i < files.length; i++) {
-      processFile(files[i]);
-    }
-  };
+        // Create AI message from response
+        const aiMessage: Message = {
+          id: crypto.randomUUID(),
+          type: "ai",
+          content: answer_response.data.answer,
+          timestamp: new Date().toLocaleTimeString(),
+          queryPlan: answer_response.data.plan
+            ? {
+                plan: answer_response.data.plan
+                  .split("\n")
+                  .map((step: string) => step.trim())
+                  .filter((step: string) => step.length > 0),
+                subQuestions: answer_response.data.sub_questions || [],
+              }
+            : undefined,
+          sources: answer_response.data.context
+            ? parseContextToSources(answer_response.data.context)
+            : [],
+        };
 
-  const processFile = async (file: File) => {
-    try {
-      if (file.type !== "application/pdf") {
-        alert("❌ Only PDF files are supported");
-        return;
+        setMessages((prev) => {
+          // Remove any loading message
+          const withoutLoading = prev.filter((msg) => !msg.isLoading);
+          return [...withoutLoading, aiMessage];
+        });
+        setIsProcessing(false);
       }
-
-      setIsProcessing(true);
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fileService.uploadfile(formData);
-
-      dispatch({
-        type: FILE_ACTION_TYPES.POST_FILE + COMMON_ACTION_TYPES.SUCCESS,
-        payload: response.data,
-      });
-    } catch (error) {
-      dispatch({
-        type: FILE_ACTION_TYPES.POST_FILE + COMMON_ACTION_TYPES.ERROR,
-        payload: error,
-      });
     }
+  }, [answer_response]);
+
+  {
+    /*----------------------------------------------------------- SESSION CREATION ------------------------------------------------------------*/
+  }
+
+  useEffect(() => {
+    initializeSession();
+  }, []);
+
+  const generateSessionId = (): string => {
+    return `session_${Date.now()}_${crypto.randomUUID()}`;
   };
 
+  // Initialize new session
+  const initializeSession = () => {
+    const newSessionId = generateSessionId();
+    setSessionId(newSessionId);
+    console.log("New session initialized:", newSessionId);
+  };
+
+  const clearSession = () => {
+    setDocuments([]);
+    setMessages([]);
+    setInput("");
+    setExpandedPlan(null);
+    setExpandedSources(null);
+    setLastProcessedResponseId(null);
+    initializeSession();
+  };
+
+  {
+    /*----------------------------------------------------------- FILE UPLOAD ------------------------------------------------------------*/
+  }
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.currentTarget.files;
+
     if (files) {
-      for (let i = 0; i < files.length; i++) {
-        processFile(files[i]);
+      setStagedFiles((prev) => [...prev, ...Array.from(files)]);
+    }
+  };
+
+  const removeStagedFile = (index: number) => {
+    setStagedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleConfirmUpload = async () => {
+    setIsProcessing(true);
+
+    for (const file of stagedFiles) {
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response: UploadResponse = await fileService.uploadfile(formData);
+        console.log("RESP", response);
+        dispatch({
+          type: FILE_ACTION_TYPES.POST_FILE + COMMON_ACTION_TYPES.SUCCESS,
+          payload: response.data,
+        });
+
+        const newDoc = {
+          id: crypto.randomUUID(),
+          ...response.data,
+        };
+
+        setDocuments((prev) => [...prev, newDoc]);
+      } catch (error) {
+        console.error(`Failed to upload ${file.name}:`, error);
+        dispatch({
+          type: FILE_ACTION_TYPES.POST_FILE + COMMON_ACTION_TYPES.ERROR,
+          payload: error,
+        });
       }
     }
+
+    // Clear staged files and close modal
+    setStagedFiles([]);
+    setIsProcessing(false);
+
+    // Scroll to documents section after upload
+    setTimeout(() => {
+      documentsRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    }, 100);
   };
 
-  const removeDocument = (id: string) => {
-    setDocuments((prev) => prev.filter((doc) => doc.id !== id));
-  };
-
-  const generateQueryPlan = (question: string): QueryPlan => {
-    const questionLower = question.toLowerCase();
-    let steps = [
-      "Analyze question intent",
-      "Search for relevant content",
-      "Retrieve and rank results",
-    ];
-    let subQuestions = [`"${question}"`, `Key concepts from "${question}"`];
-
-    if (questionLower.includes("what") || questionLower.includes("define")) {
-      steps = [
-        "Extract key terms",
-        "Search definitions and explanations",
-        "Compile comprehensive answer",
-      ];
-      subQuestions.push("Detailed explanation and context");
-    }
-
-    if (questionLower.includes("how") || questionLower.includes("process")) {
-      steps = [
-        "Identify process steps",
-        "Search for methodology",
-        "Verify sequence and logic",
-      ];
-      subQuestions.push("Step-by-step procedures");
-    }
-
-    if (
-      questionLower.includes("compare") ||
-      questionLower.includes("difference")
-    ) {
-      steps = [
-        "Identify comparison criteria",
-        "Search for each item",
-        "Compare results",
-      ];
-      subQuestions.push("Comparative analysis");
-    }
-
-    return {
-      originalQuestion: question,
-      searchSteps: steps,
-      subQuestions,
-    };
-  };
-
-  const generateSources = (): Source[] => {
-    if (documents.length === 0) return [];
-
-    return documents.slice(0, 2).map((doc) => ({
-      name: doc.name,
-      pages: Array.from(
-        { length: 2 },
-        () => Math.floor(Math.random() * doc.pages) + 1,
-      ),
-      confidence: Math.random() * 0.2 + 0.75,
-      chunks: Math.floor(Math.random() * 5) + 2,
-    }));
-  };
-
-  const generateResponse = (question: string): string => {
-    const questionLower = question.toLowerCase();
-
-    if (questionLower.includes("vector")) return MOCK_AI_RESPONSES.vector;
-    if (questionLower.includes("analysis")) return MOCK_AI_RESPONSES.analysis;
-    if (questionLower.includes("benefit")) return MOCK_AI_RESPONSES.benefits;
-
-    return MOCK_AI_RESPONSES.default;
-  };
+  {
+    /*----------------------------------------------------------- QUERY AND ANSWER ------------------------------------------------------------*/
+  }
 
   const handleSendMessage = async () => {
-    if (!input.trim() || documents.length === 0) {
-      if (documents.length === 0) {
-        alert("⚠️ Please upload documents first");
-      }
+    if (!input.trim()) {
       return;
     }
 
     const userMessage: Message = {
-      id: Math.random().toString(),
+      id: crypto.randomUUID(),
       type: "user",
       content: input,
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
+      timestamp: new Date().toLocaleTimeString(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    // Add loading message
+    const loadingMessage: Message = {
+      id: crypto.randomUUID(),
+      type: "ai",
+      content: "",
+      timestamp: new Date().toLocaleTimeString(),
+      isLoading: true,
+    };
+
+    setMessages((prev) => [...prev, userMessage, loadingMessage]);
+
+    const payload: QAPayloadDTO = {
+      question: input,
+      session_id: sessionId,
+    };
+
     setInput("");
     setIsProcessing(true);
 
-    // Simulate query planning
-    const queryPlan = generateQueryPlan(input);
-
-    // Simulate processing delay
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    const sources = generateSources();
-    const response = generateResponse(input);
-
-    const aiMessage: Message = {
-      id: Math.random().toString(),
-      type: "ai",
-      content: response,
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      queryPlan: showQueryPlanning ? queryPlan : undefined,
-      sources,
-    };
-
-    setMessages((prev) => [...prev, aiMessage]);
-    setIsProcessing(false);
-  };
-
-  const clearSession = () => {
-    if (confirm("Clear all documents and messages?")) {
-      setDocuments([]);
-      setMessages([]);
-      setInput("");
-      setExpandedPlan(null);
-      setExpandedSources(null);
-    }
+    dispatch(answeringActions.postAnswer(payload));
   };
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground font-mono">
+      {/* Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showConfirmModal}
+        onClose={() => setShowConfirmModal(false)}
+        onConfirm={clearSession}
+        title="Clear Session"
+        message="Are you sure you want to clear all documents and messages? This action cannot be undone."
+      />
+
+      {/* Upload Modal */}
+      <UploadModal
+        isOpen={stagedFiles.length > 0}
+        stagedFiles={stagedFiles}
+        isProcessing={isProcessing}
+        onClose={() => setStagedFiles([])}
+        onRemoveFile={removeStagedFile}
+        onConfirmUpload={handleConfirmUpload}
+      />
+
+      <DocumentsModal
+        isOpen={showDocumentsModal}
+        documents={documents}
+        onClose={() => setShowDocumentsModal(false)}
+      />
+
+      {/* Document Badge - Floating button */}
+      <DocumentBadge
+        documents={documents}
+        onClick={() => setShowDocumentsModal(true)}
+      />
+
       {/* Header */}
       <div className="border-b border-border bg-background px-6 py-4 flex justify-between items-center">
         <h1 className="text-xl font-bold glow-text flex items-center gap-2">
@@ -248,16 +268,9 @@ export default function RAGTerminal() {
         </h1>
         <div className="flex gap-2">
           <button
-            onClick={() => {
-              /* Settings modal would open */
-            }}
-            className="p-2 hover:bg-card border border-border rounded hover:border-secondary transition-all duration-200"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-          <button
-            onClick={clearSession}
-            className="p-2 hover:bg-card border border-border rounded hover:border-secondary transition-all duration-200"
+            onClick={() => setShowConfirmModal(true)}
+            className="p-2 hover:bg-card border border-border rounded hover:border-red-500 hover:text-red-500 transition-all duration-200"
+            title="Clear session"
           >
             <RotateCcw className="w-4 h-4" />
           </button>
@@ -267,91 +280,102 @@ export default function RAGTerminal() {
       {/* Main Content */}
       <div className="flex-1 overflow-auto">
         <div className="p-6 space-y-6 max-w-6xl mx-auto">
-         
-
-    
-
           {/* Messages */}
-          <div className="space-y-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`float-in ${
-                  message.type === "user" ? "text-right" : "text-left"
-                }`}
-              >
-                {/* User Message */}
-                {message.type === "user" && (
-                  <div className="flex justify-end gap-2">
-                    <div className="max-w-2xl">
-                      <p className="text-xs text-muted-foreground mb-1">
-                        [{message.timestamp}]
-                      </p>
-                      <div className="bg-card border border-primary rounded p-3">
-                        <p className="text-primary text-sm">
-                          <span className="font-bold">&gt; </span>
-                          {message.content}
+          {messages.length > 0 && (
+            <div className="space-y-4">
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`float-in ${
+                    message.type === "user" ? "text-right" : "text-left"
+                  }`}
+                >
+                  {/* User Message */}
+                  {message.type === "user" && (
+                    <div className="flex justify-end gap-2">
+                      <div className="max-w-2xl">
+                        <p className="text-xs text-muted-foreground mb-1">
+                          [{message.timestamp}]
                         </p>
+                        <div className="bg-card border border-primary rounded p-3">
+                          <p className="text-primary text-sm">
+                            <span className="font-bold">&gt; </span>
+                            {message.content}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* AI Message */}
-                {message.type === "ai" && (
-                  <div className="flex justify-start gap-2 max-w-3xl">
-                    <div className="w-full">
-                      <p className="text-xs text-muted-foreground mb-1">
-                        [{message.timestamp}]
-                      </p>
-
-                      {/* Query Plan */}
-                      {message.queryPlan && (
-                        <QueryPlaning
-                          message={message}
-                          setExpandedPlan={setExpandedPlan}
-                          expandedPlan={expandedPlan}
-                        />
-                      )}
-
-                      {/* AI Response */}
-                      <div className="bg-card border border-secondary rounded p-3 mb-3">
-                        <p className="text-secondary font-bold text-sm mb-2">
-                          AI:
+                  {/* AI Message */}
+                  {message.type === "ai" && (
+                    <div className="flex justify-start gap-2 max-w-3xl">
+                      <div className="w-full">
+                        <p className="text-xs text-muted-foreground mb-1">
+                          [{message.timestamp}]
                         </p>
-                        <p className="text-sm text-foreground leading-relaxed">
-                          {message.content}
-                        </p>
+
+                        {/* Loading State */}
+                        {message.isLoading ? (
+                          <div className="bg-card border border-secondary rounded p-3 mb-3">
+                            <p className="text-secondary font-bold text-sm mb-2">
+                              AI:
+                            </p>
+                            <div className="text-sm text-muted-foreground flex items-center gap-2">
+                              <span>Thinking</span>
+                              <LoadingDots />
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            {/* Query Plan */}
+                            {message.queryPlan && showQueryPlanning && (
+                              <QueryPlaning
+                                message={message}
+                                setExpandedPlan={setExpandedPlan}
+                                expandedPlan={expandedPlan}
+                              />
+                            )}
+
+                            {/* AI Response */}
+                            <div className="bg-card border border-secondary rounded p-3 mb-3">
+                              <p className="text-secondary font-bold text-sm mb-2">
+                                AI:
+                              </p>
+                              <p className="text-sm text-foreground leading-relaxed">
+                                {message.content}
+                              </p>
+                            </div>
+
+                            {/* Sources */}
+                            {message.sources && message.sources.length > 0 && (
+                              <SourceContent
+                                setExpandedSources={setExpandedSources}
+                                expandedSources={expandedSources}
+                                message={message}
+                              />
+                            )}
+                          </>
+                        )}
                       </div>
-
-                      {/* Sources */}
-                      {message.sources && message.sources.length > 0 && (
-                        <SourceContent
-                          setExpandedSources={setExpandedSources}
-                          expandedSources={expandedSources}
-                          message={message}
-                        />
-                      )}
                     </div>
-                  </div>
-                )}
-              </div>
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
+                  )}
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
         </div>
       </div>
 
       {/* Input Area */}
-     
-
       <div className="border-t border-border bg-background px-6 py-4">
         <div className="max-w-6xl mx-auto flex gap-2">
           <div className="flex-1 relative">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={(e) =>
+              onKeyDown={(e) =>
                 e.key === "Enter" && !e.shiftKey && handleSendMessage()
               }
               placeholder="Enter your question..."
@@ -363,14 +387,13 @@ export default function RAGTerminal() {
             <label className="absolute left-3 top-1/2 -translate-y-1/2 cursor-pointer text-muted-foreground hover:text-foreground transition-colors">
               <Paperclip className="w-4 h-4" />
               <input
+                ref={fileInputRef}
                 type="file"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) processFile(file);
-                }}
+                onChange={handleFileSelect}
                 accept=".pdf"
                 className="hidden"
                 disabled={isProcessing}
+                multiple
               />
             </label>
           </div>
@@ -389,9 +412,6 @@ export default function RAGTerminal() {
       {/* Status Bar */}
       <div className="border-t border-border bg-background px-6 py-3 space-y-3">
         <div className="max-w-6xl mx-auto">
-          {/* Pipeline Status */}
-          <PipelineStatus isProcessing={isProcessing} />
-
           {/* Controls */}
           <div className="flex items-center justify-between">
             <div className="flex gap-4 text-xs">
@@ -408,6 +428,30 @@ export default function RAGTerminal() {
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes bounce {
+          0%,
+          100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-5px);
+          }
+        }
+        .animate-bounce {
+          animation: bounce 1s ease-in-out infinite;
+        }
+        .animation-delay-0 {
+          animation-delay: 0s;
+        }
+        .animation-delay-200 {
+          animation-delay: 0.2s;
+        }
+        .animation-delay-400 {
+          animation-delay: 0.4s;
+        }
+      `}</style>
     </div>
   );
 }
