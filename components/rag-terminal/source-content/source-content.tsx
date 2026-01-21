@@ -1,9 +1,7 @@
 import React from "react";
 import {
-  
   ChevronDown,
   ChevronRight
- 
 } from "lucide-react";
 import { SourceDto } from "@/utilities/models/chat.model";
 
@@ -23,26 +21,31 @@ const SourceContent = (props: SourceDto) => {
         ) : (
           <ChevronRight className="w-3 h-3" />
         )}
-        📖 SOURCES
+        📖 SOURCES ({props.message.sources?.length || 0} chunks)
       </div>
 
       {props.expandedSources === props.message.id && (
-        <div className="mt-3 space-y-2 text-xs text-foreground">
-          {props.message.sources?.map((source, idx) => (
-            <div key={idx} className="ml-2">
-              <p className="font-semibold">• {source.name}</p>
-              <p className="text-muted-foreground ml-2">
-                pages {source.pages.join(", ")}
+        <div className="mt-3 space-y-3 text-xs text-foreground">
+          {props.message.sources?.map((source) => (
+            <div 
+              key={source.id} 
+              className="ml-2 p-2 bg-card/30 rounded border border-border"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <p className="font-semibold text-accent">
+                  Chunk {source.chunkNumber}
+                </p>
+                <span className="text-muted-foreground">
+                  Page: {source.page}
+                </span>
+              </div>
+              
+              <p className="text-foreground leading-relaxed whitespace-pre-wrap">
+                {source.content}
               </p>
+           
             </div>
           ))}
-          <div className="pt-2 border-t border-border flex justify-between text-muted-foreground">
-            <span>
-              Confidence:{" "}
-              {(props.message.sources?.[0]?.confidence || 0).toFixed(2)}
-            </span>
-            <span>Chunks: {props.message.sources?.[0]?.chunks || 0}</span>
-          </div>
         </div>
       )}
     </div>
