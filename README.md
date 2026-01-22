@@ -33,7 +33,7 @@
 
 
 ### 🧠 Backend (RAG API)
-- **API Base URL:** https://your-backend-deployment-link
+- **API Base URL:** https://ikms-stemlink-production.up.railway.app
 
 
   
