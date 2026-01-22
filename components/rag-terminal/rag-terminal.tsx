@@ -42,7 +42,6 @@ export default function RAGTerminal() {
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showAllDocs, setShowAllDocs] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
@@ -57,6 +56,7 @@ export default function RAGTerminal() {
   >(null);
 
   const dispatch = useDispatch();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const answer_response = useSelector((state: any) => state.answer.postAnswer);
 
   useEffect(() => {
@@ -105,11 +105,6 @@ export default function RAGTerminal() {
   {
     /*----------------------------------------------------------- SESSION CREATION ------------------------------------------------------------*/
   }
-
-  useEffect(() => {
-    initializeSession();
-  }, []);
-
   const generateSessionId = (): string => {
     return `session_${Date.now()}_${crypto.randomUUID()}`;
   };
@@ -120,6 +115,11 @@ export default function RAGTerminal() {
     setSessionId(newSessionId);
     console.log("New session initialized:", newSessionId);
   };
+
+  useEffect(() => {
+    initializeSession();
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const clearSession = () => {
     setDocuments([]);
