@@ -24,6 +24,10 @@
 
 ## 🚀 Deployment
 
+<p align="center">
+  <img src="RAG.png" width="750"/>
+</p>
+
 ### 🌐 Frontend (Next.js)
 - **Live App:** https://ikms-chat-bot.vercel.app
 
