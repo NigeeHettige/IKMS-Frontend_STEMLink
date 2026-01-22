@@ -15,9 +15,24 @@
 
 ---
 
-![Frontend](https://ikms-chat-bot.vercel.app)
-![Backend](https://img.shields.io/badge/Backend-Live-blue?style=for-the-badge)
 
+
+
+
+
+
+
+## 🚀 Deployment
+
+### 🌐 Frontend (Next.js)
+- **Live App:** https://ikms-chat-bot.vercel.app
+
+
+### 🧠 Backend (RAG API)
+- **API Base URL:** https://your-backend-deployment-link
+
+
+  
 
 ## 📋 Table of Contents
 
