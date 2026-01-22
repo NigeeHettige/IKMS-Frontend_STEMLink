@@ -17,7 +17,7 @@ axiosPublicInstance.interceptors.response.use(
 
 export const axiosFileUploadInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 120000, 
+  timeout: 180000, 
 })
 
 axiosFileUploadInstance.interceptors.response.use(

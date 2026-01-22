@@ -168,7 +168,6 @@ export default function RAGTerminal() {
 
         setDocuments((prev) => [...prev, newDoc]);
       } catch (error) {
-        console.error(`Failed to upload ${file.name}:`, error);
         dispatch({
           type: FILE_ACTION_TYPES.POST_FILE + COMMON_ACTION_TYPES.ERROR,
           payload: error,
