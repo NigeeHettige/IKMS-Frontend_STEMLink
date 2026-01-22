@@ -113,7 +113,7 @@ export default function RAGTerminal() {
   const initializeSession = () => {
     const newSessionId = generateSessionId();
     setSessionId(newSessionId);
-    console.log("New session initialized:", newSessionId);
+  
   };
 
   useEffect(() => {
@@ -155,7 +155,7 @@ export default function RAGTerminal() {
         formData.append("file", file);
 
         const response: UploadResponse = await fileService.uploadfile(formData);
-        console.log("RESP", response);
+        
         dispatch({
           type: FILE_ACTION_TYPES.POST_FILE + COMMON_ACTION_TYPES.SUCCESS,
           payload: response.data,
