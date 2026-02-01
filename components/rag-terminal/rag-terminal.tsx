@@ -217,6 +217,7 @@ export default function RAGTerminal() {
 
     const payload: QAPayloadDTO = {
       question: input,
+      queryPlan:showQueryPlanning,
       session_id: sessionId,
     };
 

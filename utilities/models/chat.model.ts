@@ -78,6 +78,7 @@ export interface PipelineDto {
 
 export interface QAPayloadDTO {
   question: string;
+  queryPlan:boolean;
   session_id?: string;
 }
 
