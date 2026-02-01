@@ -482,6 +482,7 @@ Content-Type: application/json
 
 Body: {
   question: string
+  queryPlan:bool
   session_id?: string
 }
 
